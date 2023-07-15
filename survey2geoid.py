@@ -4,13 +4,22 @@
 #description:	python module to scan a folder structure, extract the ellipsoidal heigths from the RAW files and create spatial datasets for creating a hydroid / geoid for a survey area
 ######################
 #done
-
-######################
-#2do
 # create the script
 # create git repo
 # add to github
-# create basic reader for raw kmall files to extract ellipsoidal height from teh ping MRZ records
+# create basic reader for raw kmall files to extract ellipsoidal height from the ping MRZ records
+# extract 
+#	time
+#	latitude
+#	datagram.longitude
+#	datagram.ellipsoidHeightReRefPoint_m
+#	datagram.heading
+#	datagram.txTransducerDepth_m
+#	datagram.z_waterLevelReRefPoint_m
+
+######################
+#2do
+# make a time series plot to see if we need to subtract heave or z_waterLevelReRefPoint_m or txTransducerDepth_m form teh ellipsoid heights
 # save the time series ellipsoid heights to time/height/quelity/txdepth txt format
 # the ellipsoidal heights are subject to tide heights.  its is burned into the heigth, so we need to reduce for tide.
 # remember: geoid is a raster surface representing the mean sea level.  ellipsoidal heigth measurements from vessel can be used to derive a geoid surface if we apply 'n' seperation
@@ -35,9 +44,11 @@ import pyproj
 from py7k import s7kreader
 from pygsf import GSFREADER
 import readkml
+import matplotlib.pyplot as plt
 
 # local from the shared area...
 # sys.path.append(os.path.join(os.path.dirname(__file__), '..', 'shared'))
+import timeseries as ts
 import fileutils
 import geodetic
 import geopackage
@@ -45,7 +56,7 @@ import geopackage_ssdm
 import ssdmfieldvalue
 import kmall
 import multiprocesshelper
-
+import numpy as np
 ##############################################################################
 def main():
 
@@ -55,62 +66,23 @@ def main():
 	parser.add_argument('-o', 		action='store', 		default="",		dest='outputFilename', 	help='output GEOPACKAGE filename.')
 	parser.add_argument('-s', 		action='store', 		default="1",	dest='step', 			help='decimate the data to reduce the output size. [Default: 1]')
 	parser.add_argument('-odir', 	action='store', 		default="",	dest='odir', 			help='Specify a relative output folder e.g. -odir GIS')
-	parser.add_argument('-config', 	action='store_true', 	default=False,	dest='config', 			help='Open the SSDM configuration file for editing e.g. -config')
 	parser.add_argument('-opath', 	action='store', 		default="",	dest='opath', 			help='Specify an output path e.g. -opath c:/temp')
 	parser.add_argument('-odix', 	action='store', 		default="",	dest='odix', 			help='Specify an output filename appendage e.g. -odix _coverage')
 	parser.add_argument('-epsg', 	action='store', 		default="4326",	dest='epsg', 			help='Specify an output EPSG code for transforming from WGS84 to East,North,e.g. -epsg 4326')
 	parser.add_argument('-all', 	action='store_true', 	default=True, 	dest='all', 			help='extract all supported forms of data (ie do everything).')
 	parser.add_argument('-reprocess', 	action='store_true', 	default=False, 	dest='reprocess', 			help='reprocess the survey folders by re-reading input files and creating new GIS features, ignoring the cache files. (ie do everything).')
 	parser.add_argument('-cpu', 		dest='cpu', 			action='store', 		default='0', 	help='number of cpu processes to use in parallel. [Default: 0, all cpu]')
-	# parser.add_argument('-auv', 	action='store_true', 	default=False, 	dest='auv', 			help='extract the REALTIME AUV positions as computed by the AUV.')
-	# parser.add_argument('-navlab', 	action='store_true', 	default=False, 	dest='navlab', 			help='extract the PROCESSED NAVLAB.')
-	# parser.add_argument('-hipap', 	action='store_true',	default=False, 	dest='hipap', 			help='extract the HIPAP UPDATES.')
-	# parser.add_argument('-utp', 	action='store_true', 	default=False, 	dest='utp', 			help='extract the UTP position UPDATES.')
-	# parser.add_argument('-mp', 		action='store_true', 	default=False, 	dest='mp', 				help='extract the survey plan.')
-	# parser.add_argument('-vessel', 	action='store_true', 	default=False, 	dest='vessel', 			help='extract the vessel position UPDATES.')
-	# parser.add_argument('-mbes', 	action='store_true', 	default=False, 	dest='mbes', 			help='extract the AUV Multibeam coverage polygon.')
-	# parser.add_argument('-ctd', 	action='store_true', 	default=False, 	dest='ctd', 			help='extract the /env/ctd file.')
-	# parser.add_argument('-qc', 		action='store_true', 	default=False, 	dest='qcreport', 		help='create a QC report of navigation quality.')
-
 
 	args = parser.parse_args()
 	# if len(sys.argv)==1:
 	# 	parser.print_help()
 	# 	sys.exit(1)
 
-	if args.config:
-		geopackage.openSSDMFieldValues()
-		geopackage.openSSDMFieldValues()
-
-	# user has not set any flags so do everything.  better than doing nothing.
-	if args.all == False and \
-		args.auv == False and \
-		args.hipap == False and \
-		args.navlab == False and \
-		args.utp == False and \
-		args.mp == False and \
-		args.ctd == False and \
-		args.mbes == False and \
-		args.vessel == False:
-			args.all = True
-
-	if args.all:
-		args.auv 			= True
-		args.navlab			= True
-		args.hipap 			= True
-		args.utp 			= True
-		args.qc 			= True
-		args.mp 			= True
-		args.ctd			= True
-		args.vessel			= True
-		args.mbes			= True
-
 	if len(args.inputfolder) == 0:
 		args.inputfolder = os.getcwd() + args.inputfolder
 
 	if args.inputfolder == '.':
 		args.inputfolder = os.getcwd() + args.inputfolder
-
 
 	process(args)
 
@@ -130,9 +102,8 @@ def process(args):
 		args.outputFilename 	= fileutils.createOutputFileName(args.outputFilename)
 	
 	# create the gpkg...
+	# pkpk disable for now.  we might add the geoid to SSDM as a later feature.
 	gpkg = geopackage.geopackage(args.outputFilename, int(args.epsg))
-	# pkpk this does not yet work...
-	# gpkg.addEPSG(args.epsg)
 
 	#load the python proj projection object library if the user has requested it
 	geo = geodetic.geodesy(args.epsg)
@@ -142,12 +113,6 @@ def process(args):
 
 	# process any and all 7k files
 	mp_process7k(args, gpkg, geo)
-
-	# process any and all JSF files
-	mp_processjsf(args, gpkg, geo)
-
-	# process any and all SEGY files
-	mp_processsegy(args, gpkg, geo)
 
 	# process any and all GSF files
 	mp_processgsf(args, gpkg, geo)
@@ -246,7 +211,55 @@ def processKMALL(filename, outfilename, step):
 
 	# print("Loading KMALL Navigation...")
 	r = kmall.kmallreader(filename)
-	navigation = r.loadNavigation(step=1)
+	navigation = r.loadpingdata(step=1)
+
+
+	rawdata = np.array(navigation)
+	rawdates = rawdata[:,0]
+	rawdates = np.asarray(rawdates, dtype='datetime64[s]',)
+
+	txdepth = np.array(rawdata[:,5], dtype=float)
+	waterline = np.array(rawdata[:,6], dtype=float)
+
+	# print("load the attitude to lists...")
+	# attitude = r.loadattitude()
+	# timestamps = [i[0] for i in attitude]
+	# list_heave = [i[7] for i in attitude]
+	# csheave = ts.cTimeSeries(timestamps, list_heave)
+	# # now interpolate
+	# pingheave = []
+	# for p in navigation:
+	# 	heaveatpingtime = csheave.getValueAt(p[0])
+	# 	pingheave.append(heaveatpingtime)
+	# npheave = np.array(pingheave, dtype=float)
+
+	ellipsheights = np.array(rawdata[:,3], dtype=float) 
+	# ellipsheights_1 = np.array(rawdata[:,3], dtype=float) - 35
+	# ellipsheights_1 = np.array(rawdata[:,3], dtype=float) - npheave - 35
+
+	#make a moving average filter
+	# kernel_size = 21
+	# kernel = np.ones(kernel_size) / kernel_size
+	# ellipsheights_smooth = np.convolve(ellipsheights, kernel, mode='valid')
+	#	make a time series plot so we can see if the heave is ok
+
+	from scipy.ndimage import uniform_filter1d
+	ellipsheights_smooth = uniform_filter1d(ellipsheights, size=300)
+	# ellipsheights_smooth_1 = uniform_filter1d(ellipsheights_1, size=21)
+
+	plt.figure(figsize=(12,4))
+	plt.grid(linestyle='-', linewidth='0.2', color='black')
+	# plt.ylim(min(sm_tideA)-0.2, max(sm_tideA)+0.2, 1.0)
+	plt.plot(rawdates[::2], ellipsheights[::2], color='gray', linewidth=1, label='Ellips Height')
+	# plt.plot(rawdates[::2], txdepth[::2], color='red', linewidth=1, label='txdepth')
+	# plt.plot(rawdates[::2], ellipsheights_smooth_1[::2], color='green', linewidth=3, label='ellipsheights_smooth_1')
+	plt.plot(rawdates[::2], ellipsheights_smooth[::2], color='blue', linewidth=3, label='ellipsheights_smooth')
+	# plt.plot(rawdates[::2], sm_tideD[::2], color='yellow', linewidth=1, label='savgol7')
+	# plt.set_xlabel('Date')
+	# plt.legend(fontsize=18)
+	plt.legend(loc="upper left")
+	plt.show()
+
 	r.close()
 
 	with open(outfilename,'w') as f:

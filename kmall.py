@@ -465,8 +465,8 @@ class kmallreader:
 					for sample in datagram.data:
 						timestamp = (sample[3] + sample[4]/1000000000)
 						# print (from_timestamp(timestamp), sample[4]/1000000000)
-						#time, x, y, z, roll, pitch, heading
-						attitude.append([timestamp, sample[6], sample[7], sample[8], sample[9], sample[10], sample[11]])
+						#time, x, y, z, roll, pitch, heading, heave
+						attitude.append([timestamp, sample[6], sample[7], sample[8], sample[9], sample[10], sample[11], sample[12]])
 			except:
 				e = sys.exc_info()[0]
 				print("Error: %s.  Please check file.  it seems to be corrupt: %s" % (e, self.fileName))
@@ -519,6 +519,46 @@ class kmallreader:
 				print("Error: %s.  Please check file.  it seems to be corrupt: %s" % (e, self.fileName))
 		self.rewind()
 		return pingnavigation
+
+###############################################################################
+	def loadpingdata(self, step=0):
+		'''loads all the navigation from the PING into list so we can extract the ellipsoidal height'''
+		pingdata 					= []
+		lastimestamp = 0
+		self.rewind()
+		
+		while self.moreData():
+			try:
+				# print(self.fileptr.tell())
+				typeofdatagram, datagram = self.readDatagram()
+				if (typeofdatagram == 'CORRUPT'):
+					#we have seen corrupt kmall files when sis crashes.
+					self.rewind()
+					return pingdata
+				if (self.recordTime - lastimestamp) < step:
+					# skip...  performance increase
+					continue
+
+				if (typeofdatagram == '#MRZ'):
+					datagram.read(True)
+					# trap bad values
+					if datagram.latitude < -90:
+						continue
+					if datagram.latitude > 90:
+						continue
+					if datagram.longitude < -180:
+						continue
+					if datagram.longitude > 180:
+						continue
+
+					pingdata.append([to_timestamp(datagram.date), datagram.latitude, datagram.longitude, datagram.ellipsoidHeightReRefPoint_m, datagram.heading, datagram.txTransducerDepth_m, datagram.z_waterLevelReRefPoint_m, 0.0])
+					lastimestamp = self.recordTime
+			except:
+				e = sys.exc_info()[0]
+				print("Error: %s.  Please check file.  it seems to be corrupt: %s" % (e, self.fileName))
+		self.rewind()
+		return pingdata
+
 
 ###############################################################################
 	def getDatagramName(self, typeofdatagram):

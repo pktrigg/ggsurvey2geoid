@@ -8,7 +8,8 @@
 # create git repo
 # add to github
 # create basic reader for raw kmall files to extract ellipsoidal height from the ping MRZ records
-# extract 
+#
+# extractION
 #	time
 #	latitude
 #	datagram.longitude
@@ -16,12 +17,21 @@
 #	datagram.heading
 #	datagram.txTransducerDepth_m
 #	datagram.z_waterLevelReRefPoint_m
+#	attitudeHeave (turns out it is not required!)
+# make a time series plot to see if we need to subtract heave or z_waterLevelReRefPoint_m or txTransducerDepth_m form teh ellipsoid heights
 
 ######################
 #2do
-# make a time series plot to see if we need to subtract heave or z_waterLevelReRefPoint_m or txTransducerDepth_m form teh ellipsoid heights
-# save the time series ellipsoid heights to time/height/quelity/txdepth txt format
-# the ellipsoidal heights are subject to tide heights.  its is burned into the heigth, so we need to reduce for tide.
+# save the time series ellipsoid heights to time/height/quality/txdepth txt format
+# save geoide to an XYZ file for gridding
+# the ellipsoidal heights are subject to tide heights.  its is burned into the height, so we need to reduce for tide.
+# module to read .tid files
+# module to read zone definition files
+# module to compute the tide given a zdf, tid, time and position using inverse distance weighted tides.
+# module to extract tide from GSF files.  use this as a test to validate the tid reduction.
+# module to replace tide corrections from gsf and replace with ellipsoid values.  this is a faster mechanism than caris.
+
+######################
 # remember: geoid is a raster surface representing the mean sea level.  ellipsoidal heigth measurements from vessel can be used to derive a geoid surface if we apply 'n' seperation
 # remember: hydroid is a raster surface representing the lowest astronomical tide. https://www.icsm.gov.au/what-we-do/aushydroid
 

@@ -34,6 +34,7 @@ from statistics import mean
 # from delivershared import log as log, makedirs
 # for testing only...
 import numpy as np
+import ggmbes
 
 #/* The high order 4 bits are used to define the field size for this array */
 GSF_FIELD_SIZE_DEFAULT  = 0x00  #/* Default values for field size are used used for all beam arrays */
@@ -239,6 +240,7 @@ def testreader():
 	print("Duration %.3fs" % (time.time() - start_time )) # time the process
 	# print ("PingCount:", pingcount)
 	return
+
 
 ###############################################################################
 class UNKNOWN_RECORD:
@@ -1544,6 +1546,42 @@ class GSFREADER:
 		return ts, roll, pitch, heave, heading
 
 	###########################################################################
+	def loadpingdata(self):
+		'''
+		rewind, load the ping data from the bathy records and rewind.  output format is a class of type GGPING
+		'''
+		pingdata = []
+		previoustimestamp = 0
+		curr = self.fileptr.tell()
+		self.rewind()
+
+		while self.moreData():
+			numberofbytes, recordidentifier, datagram = self.readDatagram()
+			if recordidentifier == SWATH_BATHYMETRY:
+				datagram.read({}, True)
+				if previoustimestamp == 0:
+					# ensure the first record is not seen as a jump
+					previoustimestamp = datagram.timestamp
+				deltatime = datagram.timestamp - previoustimestamp
+				ph = ggmbes.GGPING()
+				ph.timestamp 			= datagram.timestamp
+				ph.longitude 			= datagram.longitude
+				ph.latitude 			= datagram.latitude
+				ph.ellipsoidalheight 	= datagram.height
+				ph.heading		 		= datagram.heading
+				ph.pitch			 	= datagram.pitch
+				ph.roll			 		= datagram.roll
+				ph.heave			 	= datagram.heave
+				ph.tidecorrector	 	= datagram.tidecorrector
+				pingdata.append(ph)
+
+				previoustimestamp = datagram.timestamp
+		self.fileptr.seek(curr, 0)
+		# print ("Navigation records loaded:", len(navigation))
+		self.rewind()
+
+		return pingdata
+	###########################################################################
 	def loadnavigation(self):
 		'''
 		rewind, load the navigation from the bathy records and rewind.  output format is ts,x,y,z,roll,pitch,heading
@@ -1552,7 +1590,6 @@ class GSFREADER:
 		previoustimestamp = 0
 		curr = self.fileptr.tell()
 		self.rewind()
-
 
 		while self.moreData():
 			numberofbytes, recordidentifier, datagram = self.readDatagram()

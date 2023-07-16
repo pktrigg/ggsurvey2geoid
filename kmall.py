@@ -24,6 +24,7 @@ import numpy as np
 from argparse import ArgumentParser
 from datetime import datetime, timedelta
 import glob
+import ggmbes
 
 # from sqlalchemy import false
 import timeseries
@@ -523,8 +524,10 @@ class kmallreader:
 ###############################################################################
 	def loadpingdata(self, step=0):
 		'''loads all the navigation from the PING into list so we can extract the ellipsoidal height'''
-		pingdata 					= []
-		lastimestamp = 0
+		navigation		= []
+		pingdata		= []
+		lastimestamp 	= 0
+		
 		self.rewind()
 		
 		while self.moreData():
@@ -534,7 +537,7 @@ class kmallreader:
 				if (typeofdatagram == 'CORRUPT'):
 					#we have seen corrupt kmall files when sis crashes.
 					self.rewind()
-					return pingdata
+					return navigation, pingdata
 				if (self.recordTime - lastimestamp) < step:
 					# skip...  performance increase
 					continue
@@ -551,14 +554,26 @@ class kmallreader:
 					if datagram.longitude > 180:
 						continue
 
-					pingdata.append([to_timestamp(datagram.date), datagram.latitude, datagram.longitude, datagram.ellipsoidHeightReRefPoint_m, datagram.heading, datagram.txTransducerDepth_m, datagram.z_waterLevelReRefPoint_m, 0.0])
+					navigation.append([to_timestamp(datagram.date), datagram.latitude, datagram.longitude, datagram.ellipsoidHeightReRefPoint_m, datagram.heading, datagram.txTransducerDepth_m, datagram.z_waterLevelReRefPoint_m, 0.0])
 					lastimestamp = self.recordTime
+
+					ph = ggmbes.GGPING()
+					ph.timestamp 			= to_timestamp(datagram.date)
+					ph.longitude 			= datagram.longitude
+					ph.latitude 			= datagram.latitude
+					ph.ellipsoidalheight 	= datagram.ellipsoidHeightReRefPoint_m
+					ph.heading		 		= datagram.heading
+					ph.pitch			 	= 0
+					ph.roll			 		= 0
+					ph.heave			 	= 0
+					ph.tidecorrector	 	= datagram.txTransducerDepth_m # or is it this one? datagram.z_waterLevelReRefPoint_m
+					pingdata.append(ph)
+
 			except:
 				e = sys.exc_info()[0]
 				print("Error: %s.  Please check file.  it seems to be corrupt: %s" % (e, self.fileName))
 		self.rewind()
-		return pingdata
-
+		return navigation, pingdata
 
 ###############################################################################
 	def getDatagramName(self, typeofdatagram):

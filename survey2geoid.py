@@ -4,6 +4,7 @@
 #description:	python module to scan a folder structure, extract the ellipsoidal heigths from the RAW files and create spatial datasets for creating a hydroid / geoid for a survey area
 ######################
 #done
+# module to extract tide from GSF files.  use this as a test to validate the tid reduction.
 # create the script
 # create git repo
 # add to github
@@ -24,11 +25,10 @@
 #2do
 # save the time series ellipsoid heights to time/height/quality/txdepth txt format
 # save geoide to an XYZ file for gridding
-# the ellipsoidal heights are subject to tide heights.  its is burned into the height, so we need to reduce for tide.
+# remember: the ellipsoidal heights are subject to tide heights.  its is burned into the height, so we need to reduce for tide.
 # module to read .tid files
 # module to read zone definition files
 # module to compute the tide given a zdf, tid, time and position using inverse distance weighted tides.
-# module to extract tide from GSF files.  use this as a test to validate the tid reduction.
 # module to replace tide corrections from gsf and replace with ellipsoid values.  this is a faster mechanism than caris.
 
 ######################
@@ -67,6 +67,8 @@ import ssdmfieldvalue
 import kmall
 import multiprocesshelper
 import numpy as np
+import jsonpickle
+
 ##############################################################################
 def main():
 
@@ -119,15 +121,96 @@ def process(args):
 	geo = geodetic.geodesy(args.epsg)
 
 	# process any and all kmall files
-	mp_processKMALL(args, gpkg, geo)
+	ellipsefiles = mp_processKMALL(args, gpkg, geo)
 
 	# process any and all 7k files
 	mp_process7k(args, gpkg, geo)
 
-	# process any and all GSF files
-	mp_processgsf(args, gpkg, geo)
+	# extract ping data from GSF files
+	gsffiles = mp_processgsf(args, gpkg, geo)
 
-	print("Completed creation of SSDM tracks to: %s" %(args.outputFilename))
+	# now we need to merge the data from GSF into the MBES ellipsoid data
+	mergegsf2ellipse(ellipsefiles, gsffiles)
+	print("Completed creation of Geoid extraction to: %s" %(args.outputFilename))
+
+###############################################################################
+def	mergegsf2ellipse(ellipsefiles, gsffiles):
+	'''we need to loop through the mbes pings, look up the tide from the gsf files or compute form the .tid and zdf and inject the tides into the ping data'''
+
+	#load the gsf ping data to a single time series...
+	for filename in gsffiles:
+		f = open(filename)
+		json_str = f.read()
+		pingdata = jsonpickle.decode(json_str)
+		timestamps 		= [o.timestamp for o in pingdata]
+		tides		 	= [o.tidecorrector for o in pingdata]
+
+	cstide = ts.cTimeSeries(timestamps, tides)
+
+	for filename in ellipsefiles:
+		print (filename)
+		f = open(filename)
+		json_str = f.read()
+		pingdata = jsonpickle.decode(json_str)
+		timestamps 		= [o.timestamp for o in pingdata]
+		f.close()	 	
+
+		# now look up thye tide from the gsf ping data
+		for ping in pingdata:
+			ping.tidecorrector = cstide.getValueAt(ping.timestamp)
+
+		# now write the pingdata back to the file
+		with open(filename,'w') as f:
+			pd = jsonpickle.encode(pingdata)
+			f.write(pd)
+
+	return ellipsefiles
+
+###############################################################################
+def	smoothellipse(ellipsefiles):
+	''' '''
+	for filename in ellipsefiles:
+		print (filename)
+		f = open(filename)
+		json_str = f.read()
+		pingdata = jsonpickle.decode(json_str)
+		timestamps 		= [o.timestamp for o in pingdata]
+		f.close()	 	
+
+		# now look up thye tide from the gsf ping data
+		# for ping in pingdata:
+			# ping.tidecorrector = cstide.getValueAt(ping.timestamp)
+
+	# print("load the attitude to lists...")
+	# attitude = r.loadattitude()
+	# timestamps = [i[0] for i in attitude]
+	# list_heave = [i[7] for i in attitude]
+	# csheave = ts.cTimeSeries(timestamps, list_heave)
+	# # now interpolate
+	# pingheave = []
+	# for p in navigation:
+	# 	heaveatpingtime = csheave.getValueAt(p[0])
+	# 	pingheave.append(heaveatpingtime)
+	# npheave = np.array(pingheave, dtype=float)
+
+	# ellipsheights = np.array(rawdata[:,3], dtype=float) 
+	# ellipsheights_1 = np.array(rawdata[:,3], dtype=float) - 35
+	# ellipsheights_1 = np.array(rawdata[:,3], dtype=float) - npheave - 35
+
+	#make a moving average filter
+	# kernel_size = 21
+	# kernel = np.ones(kernel_size) / kernel_size
+	# ellipsheights_smooth = np.convolve(ellipsheights, kernel, mode='valid')
+	#	make a time series plot so we can see if the heave is ok
+
+	# from scipy.ndimage import uniform_filter1d
+	# ellipsheights_smooth = uniform_filter1d(ellipsheights, size=300)
+	# plt.figure(figsize=(12,4))
+	# plt.grid(linestyle='-', linewidth='0.2', color='black')
+	# plt.plot(rawdates[::2], ellipsheights[::2], color='gray', linewidth=1, label='Ellips Height')
+	# plt.plot(rawdates[::2], ellipsheights_smooth[::2], color='blue', linewidth=3, label='ellipsheights_smooth')
+	# plt.legend(loc="upper left")
+	# plt.show()
 
 ###############################################################################
 def findsurveys(args):
@@ -216,66 +299,24 @@ def processsurveyPlan(args, surveyfolder, gpkg, geo):
 		createsurveyplan(reader, linestringtable, geo)
 
 ################################################################################
-def processKMALL(filename, outfilename, step):
+def processKMALL(filename, outfilename, outpingfilename, step):
 	#now read the kmall file and return the navigation table filename
 
 	# print("Loading KMALL Navigation...")
 	r = kmall.kmallreader(filename)
-	navigation = r.loadpingdata(step=1)
-
-
-	rawdata = np.array(navigation)
-	rawdates = rawdata[:,0]
-	rawdates = np.asarray(rawdates, dtype='datetime64[s]',)
-
-	txdepth = np.array(rawdata[:,5], dtype=float)
-	waterline = np.array(rawdata[:,6], dtype=float)
-
-	# print("load the attitude to lists...")
-	# attitude = r.loadattitude()
-	# timestamps = [i[0] for i in attitude]
-	# list_heave = [i[7] for i in attitude]
-	# csheave = ts.cTimeSeries(timestamps, list_heave)
-	# # now interpolate
-	# pingheave = []
-	# for p in navigation:
-	# 	heaveatpingtime = csheave.getValueAt(p[0])
-	# 	pingheave.append(heaveatpingtime)
-	# npheave = np.array(pingheave, dtype=float)
-
-	ellipsheights = np.array(rawdata[:,3], dtype=float) 
-	# ellipsheights_1 = np.array(rawdata[:,3], dtype=float) - 35
-	# ellipsheights_1 = np.array(rawdata[:,3], dtype=float) - npheave - 35
-
-	#make a moving average filter
-	# kernel_size = 21
-	# kernel = np.ones(kernel_size) / kernel_size
-	# ellipsheights_smooth = np.convolve(ellipsheights, kernel, mode='valid')
-	#	make a time series plot so we can see if the heave is ok
-
-	from scipy.ndimage import uniform_filter1d
-	ellipsheights_smooth = uniform_filter1d(ellipsheights, size=300)
-	# ellipsheights_smooth_1 = uniform_filter1d(ellipsheights_1, size=21)
-
-	plt.figure(figsize=(12,4))
-	plt.grid(linestyle='-', linewidth='0.2', color='black')
-	# plt.ylim(min(sm_tideA)-0.2, max(sm_tideA)+0.2, 1.0)
-	plt.plot(rawdates[::2], ellipsheights[::2], color='gray', linewidth=1, label='Ellips Height')
-	# plt.plot(rawdates[::2], txdepth[::2], color='red', linewidth=1, label='txdepth')
-	# plt.plot(rawdates[::2], ellipsheights_smooth_1[::2], color='green', linewidth=3, label='ellipsheights_smooth_1')
-	plt.plot(rawdates[::2], ellipsheights_smooth[::2], color='blue', linewidth=3, label='ellipsheights_smooth')
-	# plt.plot(rawdates[::2], sm_tideD[::2], color='yellow', linewidth=1, label='savgol7')
-	# plt.set_xlabel('Date')
-	# plt.legend(fontsize=18)
-	plt.legend(loc="upper left")
-	plt.show()
+	navigation, pingdata = r.loadpingdata(step=1)
 
 	r.close()
 
+	#write the trackplot info for the geopackage...
 	with open(outfilename,'w') as f:
 		json.dump(navigation, f)
 	
-	return(navigation)
+	with open(outpingfilename,'w') as f:
+		pd = jsonpickle.encode(pingdata)
+		f.write(pd)
+
+	return(navigation, pingdata)
 
 ################################################################################
 def process7k(filename, outfilename, step):
@@ -293,51 +334,22 @@ def process7k(filename, outfilename, step):
 
 ################################################################################
 def processgsf(filename, outfilename, step):
-	#now read the kmall file and return the navigation table filename
+	#now read the file and return the navigation table filename
 	navigation = []
-	# print("Loading sgy Navigation...")
+	# print("Loading gsf file...")
 	r = GSFREADER(filename)
 	if (r.fileSize == 0):
 		# the file is a corrupt empty file so skip
 		return navigation
-	navigation = r.loadnavigation()
+	pingdata = r.loadpingdata()
 	r.close()
 
 	with open(outfilename,'w') as f:
-		json.dump(navigation, f)
+		pd = jsonpickle.encode(pingdata)
+		f.write(pd)
+		# json.dump(navigation, f)
 	
-	return(navigation)
-################################################################################
-def processsegy(filename, outfilename, step):
-	#now read the kmall file and return the navigation table filename
-	navigation = []
-	# print("Loading sgy Navigation...")
-	r = segyreader(filename)
-	if (r.fileSize == 0):
-		# the file is a corrupt empty file so skip
-		return navigation
-	r.readHeader()
-	navigation = r.loadNavigation()
-	r.close()
-
-	with open(outfilename,'w') as f:
-		json.dump(navigation, f)
-	
-	return(navigation)
-
-################################################################################
-def processjsf(filename, outfilename, step):
-	#now read the kmall file and return the navigation table filename
-
-	# print("Loading jsf Navigation...")
-	r = jsfreader(filename)
-	navigation = r.loadNavigation(False)
-	r.close()
-
-	with open(outfilename,'w') as f:
-		json.dump(navigation, f)
-	
-	return(navigation)
+	return(pingdata)
 
 ################################################################################
 def mp_process7k(args, gpkg, geo):
@@ -411,11 +423,7 @@ def mp_processgsf(args, gpkg, geo):
 	if not os.path.isdir(rawfolder):
 		rawfolder = args.inputfolder
 
-	# rawfilename = ssdmfieldvalue.readvalue("MBES_RAW_FILENAME")
-
 	matches = fileutils.findFiles2(True, rawfolder, "*.gsf")
-
-	# surveyname = os.path.basename(args.inputfolder) #this folder should be the survey NAME
 
 	#create the linestring table for the trackplot
 	type, fields = geopackage_ssdm.createSurveyTracklineSSDM()
@@ -428,6 +436,7 @@ def mp_processgsf(args, gpkg, geo):
 		os.makedirs(outputfolder, exist_ok=True)
 		# makedirs(outputfolder)
 		outfilename = os.path.join(outputfolder, root+"_navigation.txt").replace('\\','/')
+		results.append(outfilename)
 		if args.reprocess:
 			if os.path.exists(outfilename):
 				os.unlink(outfilename)
@@ -447,9 +456,8 @@ def mp_processgsf(args, gpkg, geo):
 			outputfolder = os.path.join(os.path.dirname(args.outputFilename), "log")
 			os.makedirs(outputfolder, exist_ok=True)
 			# makedirs(outputfolder)
-			outfilename = os.path.join(outputfolder, root+"_navigation.txt").replace('\\','/')
+			outfilename = os.path.join(outputfolder, root+"_ping.txt").replace('\\','/')
 			result = processgsf(filename, outfilename, args.step)
-			results.append([filename, result])
 	else:
 		multiprocesshelper.log("New GSF Files to Import: %d" %(len(boundarytasks)))		
 		cpu = multiprocesshelper.getcpucount(args.cpu)
@@ -459,17 +467,16 @@ def mp_processgsf(args, gpkg, geo):
 		poolresults = [pool.apply_async(processgsf, (task[0], task[1], args.step), callback=multiprocesshelper.mpresult) for task in boundarytasks]
 		pool.close()
 		pool.join()
-		for idx, result in enumerate (poolresults):
-			results.append([boundarytasks[idx][0], result._value])
+		# for idx, result in enumerate (poolresults):
+		# 	results.append(boundarytasks[idx][0])
 			# print (result._value)
 
 	# now we can read the results files and create the geometry into the SSDM table
-	multiprocesshelper.log("Files to Import to geopackage: %d" %(len(results)))		
+	multiprocesshelper.log("GSF Files to Imported : %d" %(len(results)))		
 
 	multiprocesshelper.g_procprogress.setmaximum(len(results))
-	for result in results:
-		createTrackLine(result[0], result[1], linestringtable, float(args.step), geo)
-		multiprocesshelper.mpresult("")
+	return results
+
 ################################################################################
 def mp_processsegy(args, gpkg, geo):
 
@@ -604,20 +611,17 @@ def mp_processjsf(args, gpkg, geo):
 
 ################################################################################
 def mp_processKMALL(args, gpkg, geo):
-
-	# boundary = []
-	boundarytasks = []
-	results = []
+	''' decode the kmall files using multiple CPU and extract the ping and navigation data'''
+	
+	boundarytasks 		= []
+	results 			= []
+	outpingfilenames 	= []
 
 	rawfolder = os.path.join(args.inputfolder, ssdmfieldvalue.readvalue("MBES_RAW_FOLDER"))
 	if not os.path.isdir(rawfolder):
 		rawfolder = args.inputfolder
 
-	# rawfilename = ssdmfieldvalue.readvalue("MBES_RAW_FILENAME")
-
 	matches = fileutils.findFiles2(True, rawfolder, "*.kmall")
-
-	# surveyname = os.path.basename(args.inputfolder) #this folder should be the survey NAME
 
 	#create the linestring table for the trackplot
 	type, fields = geopackage_ssdm.createSurveyTracklineSSDM()
@@ -628,11 +632,13 @@ def mp_processKMALL(args, gpkg, geo):
 		root = os.path.basename(filename)
 		outputfolder = os.path.join(os.path.dirname(args.outputFilename), "log")
 		os.makedirs(outputfolder, exist_ok=True)
-		# makedirs(outputfolder)
 		outfilename = os.path.join(outputfolder, root+"_navigation.txt").replace('\\','/')
+		outpingfilename = os.path.join(outputfolder, root+"_ping.txt").replace('\\','/')
+		outpingfilenames.append(outpingfilename)
 		if args.reprocess:
 			if os.path.exists(outfilename):
 				os.unlink(outfilename)
+				os.unlink(outpingfilename)
 		if os.path.exists(outfilename):
 			# the cache file exists so load it
 			with open(outfilename) as f:
@@ -640,7 +646,7 @@ def mp_processKMALL(args, gpkg, geo):
 				lst = json.load(f)
 				results.append([filename, lst])
 		else:
-			boundarytasks.append([filename, outfilename])
+			boundarytasks.append([filename, outfilename, outpingfilename])
 
 	if args.cpu == '1':
 		for filename in matches:
@@ -649,7 +655,8 @@ def mp_processKMALL(args, gpkg, geo):
 			outputfolder = os.path.join(os.path.dirname(args.outputFilename), "log")
 			os.makedirs(outputfolder, exist_ok=True)
 			outfilename = os.path.join(outputfolder, root+"_navigation.txt").replace('\\','/')
-			result = processKMALL(filename, outfilename, args.step)
+			outpingfilename = os.path.join(outputfolder, root+"_ping.txt").replace('\\','/')
+			result, pingdata = processKMALL(filename, outfilename, outpingfilename, args.step)
 			results.append([filename, result])			
 	else:
 		multiprocesshelper.log("New kmall Files to Import: %d" %(len(boundarytasks)))		
@@ -658,12 +665,11 @@ def mp_processKMALL(args, gpkg, geo):
 		pool = mp.Pool(cpu)
 		multiprocesshelper.g_procprogress.setmaximum(len(boundarytasks))
 		# poolresults = [pool.apply_async(processKMALL, (task[0], task[1], args.step)) for task in boundarytasks]
-		poolresults = [pool.apply_async(processKMALL, (task[0], task[1], args.step), callback=multiprocesshelper.mpresult) for task in boundarytasks]
+		poolresults = [pool.apply_async(processKMALL, (task[0], task[1], task[2], args.step), callback=multiprocesshelper.mpresult) for task in boundarytasks]
 		pool.close()
 		pool.join()
 		for idx, result in enumerate (poolresults):
 			results.append([boundarytasks[idx][0], result._value])
-			# print (result._value)
 
 	# now we can read the results files and create the geometry into the SSDM table
 	multiprocesshelper.log("Files to Import to geopackage: %d" %(len(results)))		
@@ -672,6 +678,8 @@ def mp_processKMALL(args, gpkg, geo):
 	for result in results:
 		createTrackLine(result[0], result[1], linestringtable, float(args.step), geo)
 		multiprocesshelper.mpresult("")
+
+	return outpingfilenames
 
 ###############################################################################
 def createTrackLine(filename, navigation, linestringtable, step, geo, surveyname=""):

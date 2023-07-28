@@ -4,13 +4,20 @@
 #description:	python module to scan a folder structure, extract the ellipsoidal heigths from the RAW files and create spatial datasets for creating a hydroid / geoid for a survey area
 ######################
 #done
+# save the time series ellipsoid heights to time/height/quality/txdepth txt format
+# save geoid to an XYZ file for gridding
+# remember: the ellipsoidal heights are subject to tide heights.  its is burned into the height, so we need to reduce for tide.
 # module to extract tide from GSF files.  use this as a test to validate the tid reduction.
+# module to replace tide corrections from gsf and replace with ellipsoid values.  this is a faster mechanism than caris.
+# create basic reader for raw kmall files to extract ellipsoidal height from the ping MRZ records
 # create the script
 # create git repo
 # add to github
-# create basic reader for raw kmall files to extract ellipsoidal height from the ping MRZ records
 #
-# extractION
+# extraction from GSF
+# create a GGMBES PING class to represent a ping of data.  we can used this for lots of things
+#
+# extraction from kmall
 #	time
 #	latitude
 #	datagram.longitude
@@ -22,14 +29,13 @@
 # make a time series plot to see if we need to subtract heave or z_waterLevelReRefPoint_m or txTransducerDepth_m form teh ellipsoid heights
 
 ######################
+######################
 #2do
-# save the time series ellipsoid heights to time/height/quality/txdepth txt format
-# save geoide to an XYZ file for gridding
-# remember: the ellipsoidal heights are subject to tide heights.  its is burned into the height, so we need to reduce for tide.
 # module to read .tid files
 # module to read zone definition files
 # module to compute the tide given a zdf, tid, time and position using inverse distance weighted tides.
-# module to replace tide corrections from gsf and replace with ellipsoid values.  this is a faster mechanism than caris.
+######################
+######################
 
 ######################
 # remember: geoid is a raster surface representing the mean sea level.  ellipsoidal heigth measurements from vessel can be used to derive a geoid surface if we apply 'n' seperation

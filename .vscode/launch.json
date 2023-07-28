@@ -8,8 +8,8 @@
 			"stopOnEntry": false,
 			// "program": "${file}",
 			"program": "survey2geoid.py",
-			"python": "c:/python/python.exe",
-			"args": ["-i", "d:/sampledata", "-reprocess", "-cpu", "1"]
+			//"python": "c:/python/python.exe",
+			"args": ["-i", "/Users/paulkennedy/Documents/development/sampledata2", "-cpu", "1"]
 		}
 	]
 }

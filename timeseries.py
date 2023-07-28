@@ -25,13 +25,14 @@ class cTimeSeries:
 				self.times = arr[:,0]
 				self.values = arr[:,1]
 		else:
-			# user has passed 2 list with time and values, so handle it
+			# user has passed 2 list with time and values, so handle it.  in this case the list MUST be sorted
 			self.times = np.array(timeOrTimeValue)
 			self.values = np.array(values)
 
 ###############################################################################
 	def getValueAt(self, timestamp):
 		'''get an interpolated value for an exact time'''
+		'''requested values for times BEFORE the'''
 		return np.interp(timestamp, self.times, self.values, left=None, right=None)
 
 ###############################################################################

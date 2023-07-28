@@ -28,4 +28,6 @@ class GGPING:
 		self.roll			 	= 0
 		self.heave			 	= 0
 		self.tidecorrector	 	= 0
+		self.hydroid		 	= 0
+		self.hydroidsmooth		 	= 0
 

@@ -567,6 +567,8 @@ class kmallreader:
 					ph.roll			 		= 0
 					ph.heave			 	= 0
 					ph.tidecorrector	 	= 0 #datagram.txTransducerDepth_m # or is it this one? datagram.z_waterLevelReRefPoint_m
+					ph.waterLevelReRefPoint_m = datagram.z_waterLevelReRefPoint_m
+					ph.txTransducerDepth_m = datagram.txTransducerDepth_m
 					pingdata.append(ph)
 
 			except:

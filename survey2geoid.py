@@ -4,6 +4,11 @@
 #description:	python module to scan a folder structure, extract the ellipsoidal heigths from the RAW files and create spatial datasets for creating a hydroid / geoid for a survey area
 ######################
 #done
+# compute SD of hydroid for the line as a quality measure
+# create a time series plot of the hydroid so we can see quality
+# improve the creation of hydroid
+# speak to KM about how to calculate the ellipsoid heith ref waterline from the kmall data
+# remove heave from ellipsoid.  it helps lots
 # save the time series ellipsoid heights to time/height/quality/txdepth txt format
 # save geoid to an XYZ file for gridding
 # remember: the ellipsoidal heights are subject to tide heights.  its is burned into the height, so we need to reduce for tide.
@@ -149,11 +154,18 @@ def process(args):
 	smoothhydroid(ellipsefiles)
 
 	# now we need to compute XYZ of the results.  we will make 2 xyz files, one for the smoothed ellipsoid heights, then other for hydroid.  we will see the differences due to tides
-	export2xyz(ellipsefiles)
+	export2xyz(ellipsefiles, args)
 
 ###############################################################################
-def	export2xyz(ellipsefiles):
+def	export2xyz(ellipsefiles, args):
 	'''we need to loop through the mbes pings, and export to an ASCII xyz file so we can visualise and grid'''
+
+	outputfolder = os.path.join(os.path.dirname(args.outputFilename), "geo_las")
+	os.makedirs(outputfolder, exist_ok=True)
+	outputfolder = os.path.join(os.path.dirname(args.outputFilename), "utm_las")
+	os.makedirs(outputfolder, exist_ok=True)
+	outputfolder = os.path.join(os.path.dirname(args.outputFilename), "geo_xyz")
+	os.makedirs(outputfolder, exist_ok=True)
 
 	for filename in ellipsefiles:
 		print ("Exporting: %s" % (filename))
@@ -164,7 +176,9 @@ def	export2xyz(ellipsefiles):
 		hydroids = [o.hydroid for o in pingdata]
 		ellipsoids = [o.ellipsoidalheight for o in pingdata]
 
-		with open(filename+".xyz",'w') as f:
+		outfilename = os.path.join(outputfolder, os.path.basename(filename) + ".xyz")
+
+		with open(outfilename,'w') as f:
 			for idx, ping in enumerate(pingdata):
 				f.write("%.10f %.10f %.10f\n" % (ping.longitude, ping.latitude, ping.hydroidsmooth))
 
@@ -178,9 +192,12 @@ def	smoothhydroid(ellipsefiles):
 		json_str = f.read()
 		pingdata = jsonpickle.decode(json_str)
 
+		timestamps = [o.timestamp for o in pingdata]
+		datestamps = [from_timestamp(o.timestamp) for o in pingdata]
 		hydroids = [o.hydroid for o in pingdata]
-		# ellipsoids = [o.ellipsoidalheight for o in pingdata]
 
+		# ellipsoids = [o.ellipsoidalheight for o in pingdata]
+		np_datestamps = np.array(datestamps) 
 		np_hydroids = np.array(hydroids, dtype=float) 
 		#make a moving average filter
 		kernel_size = 21
@@ -190,42 +207,74 @@ def	smoothhydroid(ellipsefiles):
 		np_hydroids_smooth = uniform_filter1d(np_hydroids, size=300)
 
 		#	make a time series plot so we can see if the heave is ok
-		plt.figure(figsize=(12,4))
-		plt.grid(linestyle='-', linewidth='0.2', color='black')
-		plt.plot(np_hydroids, color='gray', linewidth=1, label='Raw Hydroid')
-		plt.plot(np_hydroids_smooth, color='blue', linewidth=2, label='Smooth Hydroid')
-		# plt.plot(ellipsoids, color='green', linewidth=2, label='Smooth Hydroid')
-		plt.legend(loc="upper left")
-		# plt.show()
-		plt.savefig(filename+".png")
+		import matplotlib.dates as mdates
+		figure, axes = plt.subplots(figsize =(16, 6))
 
+		ellipsoidalheights = np.array([o.ellipsoidalheight for o in pingdata]) - 53.5
+		# axes.plot(np_datestamps, ellipsoidalheights, color='gray', linewidth=1, label='datagram.ellipsoidHeightReRefPoint_m')
+
+		waterLevelReRefPoint_ms = [o.waterLevelReRefPoint_m for o in pingdata]
+		# axes.plot(np_datestamps, waterLevelReRefPoint_ms, color='red', linewidth=1, label='datagram.waterLevelReRefPoint_ms')
+
+		txTransducerDepth_ms = [o.txTransducerDepth_m for o in pingdata]
+		# axes.plot(np_datestamps, txTransducerDepth_ms, color='green', linewidth=1, label='datagram.txTransducerDepth_ms')
+
+		heaves = [o.heave for o in pingdata]
+		# axes.plot(np_datestamps, heaves, color='yellow', linewidth=2, label='Heave')
+
+		# diff = np.array(waterLevelReRefPoint_ms) + np.array(txTransducerDepth_ms)
+		# axes.plot(np_datestamps, diff, color='blue', linewidth=2, label='Difference')
+
+		EllipsoidalHeigth = np.array(ellipsoidalheights)
+		# axes.plot(np_datestamps, EllipsoidalHeigth, color='grey', linewidth=1, label='EllipsoidalHeigthRefWaterline no Heave')
+
+		# EllipsoidalHeigthRefWaterline = datagram.ellipsoidHeightReRefPoint_m - datagram.z_waterLevelReRefPoint_m
+		# EllipsoidalHeigthRefWaterline = np.array(ellipsoidalheights) - np.array(heaves)
+		EllipsoidalHeigthRefWaterline = np.array(ellipsoidalheights) - np.array(waterLevelReRefPoint_ms) - np.array(heaves)
+		axes.plot(np_datestamps, EllipsoidalHeigthRefWaterline, color='blue', linewidth=0.5, label='EllipsoidalHeigthRefWaterline SUBTRACT Waterlevel SUBTRACT Heave')
+
+		np_hydroids_smooth = uniform_filter1d(EllipsoidalHeigthRefWaterline, size=600)
+		axes.plot(np_datestamps, np_hydroids_smooth, color='green', linewidth=3, label='EllipsoidalHeigthRefWaterline Smooth')
+
+		# calculate the stanrda deviation
+		hydroidstandarddeviation = np.std(np_hydroids_smooth)
+
+		# axes.plot(ellipsoids, color='green', linewidth=2, label='Smooth Hydroid')
+		axes.xaxis.set(
+			major_locator = mdates.AutoDateLocator(minticks = 1,
+												maxticks = 5),
+		)
+		
+		locator = mdates.AutoDateLocator(minticks = 5,
+										maxticks = 10)
+		formatter = mdates.ConciseDateFormatter(locator)
+		
+		axes.xaxis.set_major_locator(locator)
+		axes.xaxis.set_major_formatter(formatter)
+
+		import matplotlib.ticker as ticker
+		tick_spacing = 0.1
+		axes.yaxis.set_major_locator(ticker.MultipleLocator(tick_spacing))
+		plt.title(os.path.basename(filename))
+
+		plt.xlabel("Date")
+		plt.ylabel("Height(m)")
+		plt.legend(loc="upper left")
+
+		plt.grid(linestyle='-', linewidth='0.2', color='black')
+		# plt.show()
+		plt.savefig(filename+ "SD %.3fm%s" % (hydroidstandarddeviation, ".png"))
+
+		print("SD: %.4f %s" % (hydroidstandarddeviation, os.path.basename(filename)) )
 		for idx, ping in enumerate(pingdata):
 			ping.hydroidsmooth = np_hydroids_smooth[idx]
-
+			ping.hydroidstandarddeviation = hydroidstandarddeviation
 		# now write the pingdata back to the file
 		with open(filename,'w') as f:
 			pd = jsonpickle.encode(pingdata)
 			f.write(pd)
 
 	return ellipsefiles
-
-	# print("load the attitude to lists...")
-	# attitude = r.loadattitude()
-	# timestamps = [i[0] for i in attitude]
-	# list_heave = [i[7] for i in attitude]
-	# csheave = ts.cTimeSeries(timestamps, list_heave)
-	# # now interpolate
-	# pingheave = []
-	# for p in navigation:
-	# 	heaveatpingtime = csheave.getValueAt(p[0])
-	# 	pingheave.append(heaveatpingtime)
-	# npheave = np.array(pingheave, dtype=float)
-
-	# ellipsheights = np.array(rawdata[:,3], dtype=float) 
-	# ellipsheights_1 = np.array(rawdata[:,3], dtype=float) - 35
-	# ellipsheights_1 = np.array(rawdata[:,3], dtype=float) - npheave - 35
-
-
 
 ###############################################################################
 def	applytides(ellipsefiles):
@@ -254,6 +303,7 @@ def	mergegsf2ellipse(ellipsefiles, gsffiles):
 
 	timestamps_merged = []
 	tides_merged = []
+	heaves_merged = []
 
 	print("load the gsf ping data to a single time series...")
 	update_progress("loading...", 0)
@@ -267,12 +317,19 @@ def	mergegsf2ellipse(ellipsefiles, gsffiles):
 
 		tides		 	= [o.tidecorrector for o in pingdata]
 		tides_merged += tides
+
+		heaves		 	= [o.heave for o in pingdata]
+		heaves_merged += heaves
+
 		update_progress("loading...", idx/len(gsffiles))
 	update_progress("loading gsf complete...", 1)
 
 	#we need to merge so we can sort by time
 	timetides = list(zip(timestamps_merged, tides_merged))
 	cstide = ts.cTimeSeries(timetides)
+
+	timeheaves = list(zip(timestamps_merged, heaves_merged))
+	csheave = ts.cTimeSeries(timeheaves)
 	
 	for filename in ellipsefiles:
 		print ("Looking up GSF tides for file: %s" % (filename))
@@ -285,6 +342,7 @@ def	mergegsf2ellipse(ellipsefiles, gsffiles):
 		# now look up thye tide from the gsf ping data
 		for ping in pingdata:
 			ping.tidecorrector = float(cstide.getValueAt(ping.timestamp))
+			ping.heave = float(csheave.getValueAt(ping.timestamp))
 
 		# now write the pingdata back to the file
 		with open(filename,'w') as f:
@@ -388,6 +446,8 @@ def processKMALL(filename, outnavfilename, outpingfilename, step):
 	# print("Loading KMALL Navigation...")
 	r = kmall.kmallreader(filename)
 	navigation, pingdata = r.loadpingdata(step=1)
+	# print ("First KMALL Record %s" % (from_timestamp(pingdata[0].timestamp)))
+	# print ("Last KMALL Record %s" % (from_timestamp(pingdata[-1].timestamp)))
 	r.close()
 
 	#write the trackplot info for the geopackage...
@@ -411,7 +471,8 @@ def processgsf(filename, outnavfilename, outpingfilename, step=0):
 		return navigation
 
 	navigation = r.loadnavigation(step)
-	pingdata = r.loadpingdata(step*10)
+	# pingdata = r.loadpingdata(step*10)
+	pingdata = r.loadpingdata(step)
 	r.close()
 
 	#write the trackplot info for the geopackage...

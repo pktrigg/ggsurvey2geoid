@@ -10,7 +10,8 @@
 			"program": "survey2geoid.py",
 			//"python": "c:/python/python.exe",
 			"env": {"PYDEVD_DISABLE_FILE_VALIDATION": "1"},
-			"args": ["-i", "X:/hydroidcomputations"]
+			"args": ["-i", "/Users/paulkennedy/Documents/development/sampledata", "-reprocess", "-cpu", "1"]
+			// "args": ["-i", "X:/hydroidcomputations"]
 		}
 	]
 }

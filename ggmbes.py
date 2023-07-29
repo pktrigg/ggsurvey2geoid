@@ -29,5 +29,9 @@ class GGPING:
 		self.heave			 	= 0
 		self.tidecorrector	 	= 0
 		self.hydroid		 	= 0
-		self.hydroidsmooth		 	= 0
+		self.hydroidsmooth	 	= 0
+		self.waterLevelReRefPoint_m = 0
+		self.txTransducerDepth_m = 0
+		self.hydroidstandarddeviation = 0
+	
 

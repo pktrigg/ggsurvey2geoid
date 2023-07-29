@@ -129,8 +129,14 @@ def process(args):
 	# process any and all kmall files
 	ellipsefiles = mp_processKMALL(args, gpkg, geo)
 
+	if len(ellipsefiles) == 0:
+		print ("oops, no kmall fles to process, quitting")
+		exit(0)
 	# extract ping data from GSF files
 	gsfnavfiles = mp_processgsf(args, gpkg, geo)
+	if len(gsfnavfiles) == 0:
+		print ("oops, no gsf fles to process, quitting")
+		exit(0)
 
 	# now we need to merge the data from GSF into the MBES ellipsoid data
 	mergegsf2ellipse(ellipsefiles, gsfnavfiles)
@@ -173,7 +179,7 @@ def	smoothhydroid(ellipsefiles):
 		pingdata = jsonpickle.decode(json_str)
 
 		hydroids = [o.hydroid for o in pingdata]
-		ellipsoids = [o.ellipsoidalheight for o in pingdata]
+		# ellipsoids = [o.ellipsoidalheight for o in pingdata]
 
 		np_hydroids = np.array(hydroids, dtype=float) 
 		#make a moving average filter
@@ -188,7 +194,7 @@ def	smoothhydroid(ellipsefiles):
 		plt.grid(linestyle='-', linewidth='0.2', color='black')
 		plt.plot(np_hydroids, color='gray', linewidth=1, label='Raw Hydroid')
 		plt.plot(np_hydroids_smooth, color='blue', linewidth=2, label='Smooth Hydroid')
-		plt.plot(ellipsoids, color='green', linewidth=2, label='Smooth Hydroid')
+		# plt.plot(ellipsoids, color='green', linewidth=2, label='Smooth Hydroid')
 		plt.legend(loc="upper left")
 		# plt.show()
 		plt.savefig(filename+".png")
@@ -232,7 +238,8 @@ def	applytides(ellipsefiles):
 		pingdata = jsonpickle.decode(json_str)
 
 		for ping in pingdata:
-			ping.hydroid = ping.ellipsoidalheight - ping.tidecorrector
+			# ping.hydroid = ping.ellipsoidalheight - ping.tidecorrector
+			ping.hydroid = ping.ellipsoidalheight + ping.tidecorrector
 
 		# now write the pingdata back to the file
 		with open(filename,'w') as f:
@@ -249,7 +256,8 @@ def	mergegsf2ellipse(ellipsefiles, gsffiles):
 	tides_merged = []
 
 	print("load the gsf ping data to a single time series...")
-	for filename in gsffiles:
+	update_progress("loading...", 0)
+	for idx, filename in enumerate(gsffiles):
 		f = open(filename)
 		json_str = f.read()
 		pingdata = jsonpickle.decode(json_str)
@@ -259,6 +267,8 @@ def	mergegsf2ellipse(ellipsefiles, gsffiles):
 
 		tides		 	= [o.tidecorrector for o in pingdata]
 		tides_merged += tides
+		update_progress("loading...", idx/len(gsffiles))
+	update_progress("loading gsf complete...", 1)
 
 	#we need to merge so we can sort by time
 	timetides = list(zip(timestamps_merged, tides_merged))
@@ -283,65 +293,66 @@ def	mergegsf2ellipse(ellipsefiles, gsffiles):
 
 	return ellipsefiles
 
-###############################################################################
-def findsurveys(args):
-	'''high level funciton to recursively find all the surveys in all subfolders'''
-	surveys = []
-	#add the base folder as a candidate in case this is the folde rth euser specified.
-	if folderisasurvey(args.inputfolder):
-		surveys.append(args.inputfolder)
-		return surveys
-	#looks like the user has specificed a higher level folder such as a root drive or project folder so scan deeply	
-	print("Scanning for surveys from root folder %s ...." % (args.inputfolder))
-	folders = fast_scandir(args.inputfolder)
-	for folder in folders:
-		if folderisasurvey(folder):
-			surveys.append(folder)
-	print("surveys to Process: %s " % (len(surveys)))
-	return surveys
+# ###############################################################################
+# def findsurveys(args):
+# 	'''high level funciton to recursively find all the surveys in all subfolders'''
+# 	surveys = []
+# 	#add the base folder as a candidate in case this is the folde rth euser specified.
+# 	if folderisasurvey(args.inputfolder):
+# 		surveys.append(args.inputfolder)
+# 		return surveys
+# 	#looks like the user has specificed a higher level folder such as a root drive or project folder so scan deeply	
+# 	print("Scanning for surveys from root folder %s ...." % (args.inputfolder))
+# 	folders = fast_scandir(args.inputfolder)
+# 	for folder in folders:
+# 		if folderisasurvey(folder):
+# 			surveys.append(folder)
+# 	print("surveys to Process: %s " % (len(surveys)))
+# 	return surveys
 
-###############################################################################
-def folderisasurvey(dirname):
-	'''validate if this is a real survey by testing if there is a survey.mp file in the folder '''
-	# filename = os.path.join(dirname, "events.txt")
-	# if not os.path.exists(filename):
-	# 	return False
+# ###############################################################################
+# def folderisasurvey(dirname):
+# 	'''validate if this is a real survey by testing if there is a survey.mp file in the folder '''
+# 	# filename = os.path.join(dirname, "events.txt")
+# 	# if not os.path.exists(filename):
+# 	# 	return False
 
-	surveys = fileutils.findFiles2(False, dirname, "*survey.mp")
-	if len(surveys)==0:
-	# filename = os.path.join(dirname, "survey.mp")
-	# if not os.path.exists(filename):
-		return False
+# 	surveys = fileutils.findFiles2(False, dirname, "*survey.mp")
+# 	if len(surveys)==0:
+# 	# filename = os.path.join(dirname, "survey.mp")
+# 	# if not os.path.exists(filename):
+# 		return False
 
-	return True
+# 	return True
 
-###############################################################################
-def fast_scandir(dirname):
-	subfolders = []
-	for root, dirs, files in os.walk(dirname, topdown=True):
-		# for name in files:
-		# 	print(os.path.join(root, name))
-		if root in subfolders:
-			continue
-		for name in dirs:
-			dirname = os.path.join(root, name)
-			print (dirname)
-			if folderisasurvey(dirname):
-				subfolders.append(dirname)
-				# dirs[:] = []
-				sys.stdout.write('.')
-				sys.stdout.flush()
-	# subfolders = [x[0] for x in os.walk(dirname)]
-	# subfolders= [f.path for f in os.scandir(dirname) if f.is_dir()]
-	# if subfolders is not None:
-	# 	for dirname in list(subfolders):
-	# 		subfolders.extend(fast_scandir(dirname))
-	# else:
-	# 	print("oops")
-	return subfolders
+# ###############################################################################
+# def fast_scandir(dirname):
+# 	subfolders = []
+# 	for root, dirs, files in os.walk(dirname, topdown=True):
+# 		# for name in files:
+# 		# 	print(os.path.join(root, name))
+# 		if root in subfolders:
+# 			continue
+# 		for name in dirs:
+# 			dirname = os.path.join(root, name)
+# 			print (dirname)
+# 			if folderisasurvey(dirname):
+# 				subfolders.append(dirname)
+# 				# dirs[:] = []
+# 				sys.stdout.write('.')
+# 				sys.stdout.flush()
+# 	# subfolders = [x[0] for x in os.walk(dirname)]
+# 	# subfolders= [f.path for f in os.scandir(dirname) if f.is_dir()]
+# 	# if subfolders is not None:
+# 	# 	for dirname in list(subfolders):
+# 	# 		subfolders.extend(fast_scandir(dirname))
+# 	# else:
+# 	# 	print("oops")
+# 	return subfolders
 
 ###############################################################################
 def update_progress(job_title, progress):
+	'''progress value should be a value between 0 and 1'''
 	length = 20 # modify this to change the length
 	block = int(round(length*progress))
 	msg = "\r{0}: [{1}] {2}%".format(job_title, "#"*block + "-"*(length-block), round(progress*100, 2))
@@ -349,26 +360,26 @@ def update_progress(job_title, progress):
 	sys.stdout.write(msg)
 	sys.stdout.flush()
 
-# ###############################################################################
-def processsurveyPlan(args, surveyfolder, gpkg, geo):
-	'''import the survey.mp file into the geopackage'''
-	matches = fileutils.findFiles(True, args.inputfolder, "*.kml")
+# # ###############################################################################
+# def processsurveyPlan(args, surveyfolder, gpkg, geo):
+# 	'''import the survey.mp file into the geopackage'''
+# 	matches = fileutils.findFiles(True, args.inputfolder, "*.kml")
 
-	if len(matches) == 0:
-		print("No KML files found for importing to survey line plan, skipping")
-		return
+# 	if len(matches) == 0:
+# 		print("No KML files found for importing to survey line plan, skipping")
+# 		return
 
-	#create the linestring table for the survey plan
-	type, fields = geopackage_ssdm.createProposed_Survey_Run_Lines()
-	linestringtable = geopackage.vectortable(gpkg.connection, "surveyPlan", gpkg.epsg, type, fields)
+# 	#create the linestring table for the survey plan
+# 	type, fields = geopackage_ssdm.createProposed_Survey_Run_Lines()
+# 	linestringtable = geopackage.vectortable(gpkg.connection, "surveyPlan", gpkg.epsg, type, fields)
 
-	# table = vectortable (connection, tablename, epsg, type, fields)
-	# return table
+# 	# table = vectortable (connection, tablename, epsg, type, fields)
+# 	# return table
 
-	for filename in matches:
-		reader = readkml.reader(filename)
-		print ("File: %s Survey lines found: %d" % (filename, len(reader.surveylines)))
-		createsurveyplan(reader, linestringtable, geo)
+# 	for filename in matches:
+# 		reader = readkml.reader(filename)
+# 		print ("File: %s Survey lines found: %d" % (filename, len(reader.surveylines)))
+# 		createsurveyplan(reader, linestringtable, geo)
 
 ################################################################################
 def processKMALL(filename, outnavfilename, outpingfilename, step):
@@ -390,7 +401,7 @@ def processKMALL(filename, outnavfilename, outpingfilename, step):
 	return(navigation, pingdata)
 
 ################################################################################
-def processgsf(filename, outnavfilename, outpingfilename, step):
+def processgsf(filename, outnavfilename, outpingfilename, step=0):
 	#now read the file and return the navigation table filename
 	navigation = []
 	# print("Loading gsf file...")
@@ -399,8 +410,8 @@ def processgsf(filename, outnavfilename, outpingfilename, step):
 		# the file is a corrupt empty file so skip
 		return navigation
 
-	navigation = r.loadnavigation()
-	pingdata = r.loadpingdata()
+	navigation = r.loadnavigation(step)
+	pingdata = r.loadpingdata(step*10)
 	r.close()
 
 	#write the trackplot info for the geopackage...
@@ -445,6 +456,7 @@ def mp_processgsf(args, gpkg, geo):
 		if args.reprocess:
 			if os.path.exists(outnavfilename):
 				os.unlink(outnavfilename)
+			if os.path.exists(outpingfilename):
 				os.unlink(outpingfilename)
 
 		if os.path.exists(outnavfilename):
@@ -454,7 +466,7 @@ def mp_processgsf(args, gpkg, geo):
 				lst = json.load(f)
 				results.append([filename, lst])
 		else:
-			boundarytasks.append([filename, outnavfilename, outpingfilename, args.step])
+			boundarytasks.append([filename, outnavfilename, outpingfilename, float(args.step)])
 
 	if args.cpu == '1':
 		for filename in matches:
@@ -474,21 +486,21 @@ def mp_processgsf(args, gpkg, geo):
 				continue
 			if os.path.exists(outpingfilename):
 				continue
-			navdata, pingdata = processgsf(filename, outnavfilename, outpingfilename, args.step)
-			results.append([filename, navdata])			
+			navdata, pingdata = processgsf(filename, outnavfilename, outpingfilename, float(args.step))
+			results.append([filename, navdata])
 	else:
-		multiprocesshelper.log("New GSF Files to Import: %d" %(len(boundarytasks)))		
+		multiprocesshelper.log("New GSF Files to Import: %d" %(len(boundarytasks)))
 		cpu = multiprocesshelper.getcpucount(args.cpu)
 		multiprocesshelper.log("Extracting GSF Navigation with %d CPU's" %(cpu))
 		pool = mp.Pool(cpu)
 		multiprocesshelper.g_procprogress.setmaximum(len(boundarytasks))
-		poolresults = [pool.apply_async(processgsf, (task[0], task[1], task[2], args.step), callback=multiprocesshelper.mpresult) for task in boundarytasks]
+		poolresults = [pool.apply_async(processgsf, (task[0], task[1], task[2], float(args.step)), callback=multiprocesshelper.mpresult) for task in boundarytasks]
 		pool.close()
 		pool.join()
 		for idx, result in enumerate (poolresults):
-			results.append([boundarytasks[idx][0], result._value])
+			results.append([boundarytasks[idx][0], result._value[0]])
 			# results.append(boundarytasks[idx][0])
-			print (result._value)
+			# print (result._value)
 
 	# now we can read the results files and create the geometry into the SSDM table
 	multiprocesshelper.log("GSF Files to Imported : %d" %(len(results)))		
@@ -534,7 +546,9 @@ def mp_processKMALL(args, gpkg, geo):
 		if args.reprocess:
 			if os.path.exists(outnavfilename):
 				os.unlink(outnavfilename)
+			if os.path.exists(outpingfilename):
 				os.unlink(outpingfilename)
+
 		if os.path.exists(outnavfilename):
 			# the cache file exists so load it
 			with open(outnavfilename) as f:
@@ -571,7 +585,7 @@ def mp_processKMALL(args, gpkg, geo):
 		pool.close()
 		pool.join()
 		for idx, result in enumerate (poolresults):
-			results.append([boundarytasks[idx][0], result._value])
+			results.append([boundarytasks[idx][0], result._value[0]])
 
 	# now we can read the results files and create the geometry into the SSDM table
 	multiprocesshelper.log("Files to Import to geopackage: %d" %(len(results)))		

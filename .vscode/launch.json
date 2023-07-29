@@ -9,7 +9,8 @@
 			// "program": "${file}",
 			"program": "survey2geoid.py",
 			//"python": "c:/python/python.exe",
-			"args": ["-i", "/Users/paulkennedy/Documents/development/sampledata2", "-cpu", "1"]
+			"env": {"PYDEVD_DISABLE_FILE_VALIDATION": "1"},
+			"args": ["-i", "X:/hydroidcomputations"]
 		}
 	]
 }

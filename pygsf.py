@@ -1546,7 +1546,7 @@ class GSFREADER:
 		return ts, roll, pitch, heave, heading
 
 	###########################################################################
-	def loadpingdata(self):
+	def loadpingdata(self, step=0):
 		'''
 		rewind, load the ping data from the bathy records and rewind.  output format is a class of type GGPING
 		'''
@@ -1573,16 +1573,18 @@ class GSFREADER:
 				ph.roll			 		= datagram.roll
 				ph.heave			 	= datagram.heave
 				ph.tidecorrector	 	= datagram.tidecorrector
-				pingdata.append(ph)
 
-				previoustimestamp = datagram.timestamp
+				if datagram.timestamp - previoustimestamp >= step:
+					pingdata.append(ph)
+					previoustimestamp = datagram.timestamp
+
 		self.fileptr.seek(curr, 0)
 		# print ("Navigation records loaded:", len(navigation))
 		self.rewind()
 
 		return pingdata
 	###########################################################################
-	def loadnavigation(self):
+	def loadnavigation(self, step=0):
 		'''
 		rewind, load the navigation from the bathy records and rewind.  output format is ts,x,y,z,roll,pitch,heading
 		'''
@@ -1599,8 +1601,10 @@ class GSFREADER:
 					# ensure the first record is not seen as a jump
 					previoustimestamp = datagram.timestamp
 				deltatime = datagram.timestamp - previoustimestamp
-				navigation.append([datagram.timestamp, datagram.longitude, datagram.latitude, datagram.height, datagram.roll, datagram.pitch, datagram.heading, deltatime])
-				previoustimestamp = datagram.timestamp
+				
+				if datagram.timestamp - previoustimestamp >= step:
+					navigation.append([datagram.timestamp, datagram.longitude, datagram.latitude, datagram.height, datagram.roll, datagram.pitch, datagram.heading, deltatime])
+					previoustimestamp = datagram.timestamp
 		self.fileptr.seek(curr, 0)
 		# print ("Navigation records loaded:", len(navigation))
 		self.rewind()

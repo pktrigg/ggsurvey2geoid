@@ -33,6 +33,13 @@
 #	attitudeHeave (turns out it is not required!)
 # make a time series plot to see if we need to subtract heave or z_waterLevelReRefPoint_m or txTransducerDepth_m form teh ellipsoid heights
 
+# LASTOOLS
+# once we export geo_xyz files we need to 
+# convert to LAZ
+# convert to East, North, Height
+# grid at 100m interval.  maybe we should triangulate instead?
+# plot the grid along with the trackplot
+# maybe add the SD to the SSDM into the remarks field
 ######################
 ######################
 #2do
@@ -230,14 +237,14 @@ def	smoothhydroid(ellipsefiles):
 
 		# EllipsoidalHeigthRefWaterline = datagram.ellipsoidHeightReRefPoint_m - datagram.z_waterLevelReRefPoint_m
 		# EllipsoidalHeigthRefWaterline = np.array(ellipsoidalheights) - np.array(heaves)
-		EllipsoidalHeigthRefWaterline = np.array(ellipsoidalheights) - np.array(waterLevelReRefPoint_ms) - np.array(heaves)
-		axes.plot(np_datestamps, EllipsoidalHeigthRefWaterline, color='blue', linewidth=0.5, label='EllipsoidalHeigthRefWaterline SUBTRACT Waterlevel SUBTRACT Heave')
+		np_EllipsoidalHeigthRefWaterline = np.array(ellipsoidalheights) - np.array(waterLevelReRefPoint_ms) - np.array(heaves)
+		axes.plot(np_datestamps, np_EllipsoidalHeigthRefWaterline, color='blue', linewidth=0.5, label='EllipsoidalHeigthRefWaterline SUBTRACT Waterlevel SUBTRACT Heave')
 
-		np_hydroids_smooth = uniform_filter1d(EllipsoidalHeigthRefWaterline, size=600)
+		np_hydroids_smooth = uniform_filter1d(np_EllipsoidalHeigthRefWaterline, size=600)
 		axes.plot(np_datestamps, np_hydroids_smooth, color='green', linewidth=3, label='EllipsoidalHeigthRefWaterline Smooth')
 
 		# calculate the stanrda deviation
-		hydroidstandarddeviation = np.std(np_hydroids_smooth)
+		hydroidstandarddeviation = np.std(np_EllipsoidalHeigthRefWaterline)
 
 		# axes.plot(ellipsoids, color='green', linewidth=2, label='Smooth Hydroid')
 		axes.xaxis.set(
